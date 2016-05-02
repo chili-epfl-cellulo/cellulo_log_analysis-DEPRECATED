@@ -12,7 +12,7 @@ from scipy.misc import imread
 import matplotlib.cbook as cbook
 import math
 
-infile = "windfield_game1_orange_withindex.log"
+infile = "windfield_game1_blue_withindex.log"
 count = 0
 width = 1280
 height = 1280
@@ -100,10 +100,11 @@ def extractData(lines):
     events = []
     distances = []
     maxlenght =0
-    fout = open(infile[:-4]+'_distances.csv','w')
-    fgrasped = open(infile[:-4]+'_grasped.csv','w')
-    fvel = open(infile[:-4]+'_velocity.csv','w')
-    fpos = open(infile[:-4]+'_position.csv','w')
+    fout = open('./csv/'+infile[:-4]+'_distances.csv','w')
+    fgrasped = open('./csv/'+infile[:-4]+'_grasped.csv','w')
+    fvel = open('./csv/'+infile[:-4]+'_velocity.csv','w')
+    fpos = open('./csv/'+infile[:-4]+'_position.csv','w')
+    fpoint = open('./csv/'+infile[:-4]+'_ppoints.csv','w')
     firstline = lines[0].split(' ')
     first_time = datetime.strptime(firstline[0] + ' '+firstline[1], '%d/%m/%Y %H:%M:%S.%f')
 
@@ -125,7 +126,7 @@ def extractData(lines):
 
             distances.append([time, len(hlist), all_distances ])
             maxlenght = max(maxlenght,len(hlist))
-            fout.write((str(time)+','+str(all_distances)+'\n'))
+            fout.write((str(time)+','+str(all_distances).replace(']','').replace('[','')+'\n'))
             fpos.write((str(time)+','+str(robot_positionx)+','+str(robot_positiony)+'\n'))
             #print(distances[-1])
 
@@ -134,6 +135,7 @@ def extractData(lines):
             tmplist =linelist[-1]
             hlist = tmplist[1:-1].split(',')
             hlist = parsePointList(hlist)
+            fpoint.write((str(time)+','+str(hlist).replace(']','').replace('[','')+'\n'))
             ppoints.append([time, hlist])
 
         # speed of robot
@@ -153,6 +155,8 @@ def extractData(lines):
     fout.close()
     fgrasped.close()
     fvel.close()
+    fpos.close()
+    fpoint.close()
     print(len(robot_position), len(ppoints),len(robot_velocity),len(events))
     print(maxlenght)
     return (robot_position, ppoints, robot_velocity, distances)
