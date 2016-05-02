@@ -17,6 +17,7 @@ hlist = []
 hp =0
 nbcols = int(2418 /12)
 nbrows = int(950 /12)
+fps = 0
 
 
 
@@ -46,8 +47,8 @@ def draw():
     global robot_position
     linelist = line.split(' ')
     if(line.find("robot at") >= 0):
-        robot_positionx = int(float(linelist[-2]) * img.width)
-        robot_positiony = int(float(linelist[-1]) * img.height)
+        robot_positionx = int(float(linelist[-1]) * img.width)
+        robot_positiony = int(float(linelist[-2]) * img.height)
         robot_position = [robot_positionx, robot_positiony]
     fill(0,255,0,127)
     ellipse(robot_position[0], robot_position[1], 50, 50)
@@ -66,11 +67,6 @@ def draw():
     count +=1
     #img.pixels[robot_position.x*img.width, robot.position.y *img.height] = color(255,0,0)
 
-
-def grouper(n, iterable, fillvalue=None):
-    "grouper(3, 'ABCDEFG', 'x') --> ABC DEF Gxx"
-    args = [iter(iterable)] * n
-    return izip_longest(fillvalue=fillvalue, *args)
 
 def drawHiddenPointList(hlist):
     for h in xrange(0,len(hlist),4):
