@@ -187,6 +187,16 @@ def drawHiddenPointList(hlist,img):
             #fill(c[0],c[1],c[2],127)
             #ellipse(hxm, hym, 70, 70)
 
+def graspAnalysis(fname = './csv/'+infile[:-4]+'_distances.csv'):
+    lines = readLog(fname)
+    prev_time = 0
+    data = []
+    
+
+
+
+
+
 def main():
     lines  = readLog(infile)
     #print(computeFrameRate(lines))
