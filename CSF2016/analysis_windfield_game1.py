@@ -11,8 +11,12 @@ from itertools import izip_longest
 from scipy.misc import imread
 import matplotlib.cbook as cbook
 import math
+from matplotlib.colors import LinearSegmentedColormap
+import pandas as pd
+import seaborn as sns
+sns.set(color_codes=True)
 
-infile = "windfield_game1_blue_withindex.log"
+infile = "windfield_game1_green_withindex.log"
 count = 0
 width = 1280
 height = 1280
@@ -102,12 +106,13 @@ def extractData(lines):
     maxlenght =0
     fout = open('./csv/'+infile[:-4]+'_distances.csv','w')
     fgrasped = open('./csv/'+infile[:-4]+'_grasped.csv','w')
+    fkidnapped = open('./csv/'+infile[:-4]+'_kidnapped.csv','w')
     fvel = open('./csv/'+infile[:-4]+'_velocity.csv','w')
     fpos = open('./csv/'+infile[:-4]+'_position.csv','w')
     fpoint = open('./csv/'+infile[:-4]+'_ppoints.csv','w')
     firstline = lines[0].split(' ')
     first_time = datetime.strptime(firstline[0] + ' '+firstline[1], '%d/%m/%Y %H:%M:%S.%f')
-
+    time = 0
     for line in lines:
 
         linelist = line.split(' ')
@@ -152,8 +157,19 @@ def extractData(lines):
         if(line.find('checking')>=0):
             events.append([time,'CHECKING'])
 
+        #kidnappes
+        if(line.find('returned on paper')>=0):
+            fkidnapped.write(str(time)+',returned\n')
+            events.append([time,'RETURNED'])
+        elif(line.find('was kidnapped')>=0):
+            fkidnapped.write(str(time)+',kidnapped\n')
+            events.append([time,'KIDNAPPED'])
+
     fout.close()
+    fgrasped.write(str(time)+',over\n')
     fgrasped.close()
+    fkidnapped.write(str(time)+',over\n')
+    fkidnapped.close()
     fvel.close()
     fpos.close()
     fpoint.close()
@@ -187,24 +203,118 @@ def drawHiddenPointList(hlist,img):
             #fill(c[0],c[1],c[2],127)
             #ellipse(hxm, hym, 70, 70)
 
-def graspAnalysis(fname = './csv/'+infile[:-4]+'_distances.csv'):
-    lines = readLog(fname)
-    prev_time = 0
-    data = []
-    
+def graspAnalysis(color = 'orange'):
+    th_time = 2
+    g_data = readLog( "./csv/windfield_game1_"+color+"_withindex_grasped.csv")
+    tot_gtime =0
+    gtime = float(g_data[0].replace('\n','').split(',')[0])
+    for gline in g_data:
+        gline = gline.replace('\n','').split(',')
+        if((float(gline[0]) < gtime + th_time) and gline[1]!='over'):
+            gtime = float(gline[0])
+            continue
+        elif(gline[1]=='over'):
+            tot_gtime /= float(gline[0])
+            print(tot_gtime*100, gline[0])
+            return tot_gtime*100
+        else:
+            tot_gtime += float(gline[0]) - gtime
+            gtime = float(gline[0])
 
 
+def kidnappedRatio(color = 'orange'):
+    k_data = readLog( "./csv/windfield_game1_"+color+"_withindex_kidnapped.csv")
+    tot_ktime =0
+    ktime = 0
+    prev_lineisk = False
+    for kline in k_data:
+        kline = kline.replace('\n','').split(',')
+        if(kline[1]=='kidnapped'):
+            ktime = float(kline[0])
+            prev_lineisk = True
+        elif(kline[1]=='returned' and prev_lineisk):
+            tot_ktime += (float(kline[0]) - ktime)
+            prev_lineisk = False
+        elif(kline[1]=='over'):
+            tot_ktime /= float(kline[0])
+            prev_lineisk = False
+            print(tot_ktime*100, kline[0])
+            return tot_ktime*100
 
+
+def occupationAnalysis():
+    img = plt.imread("playground.jpg")
+    robot_position = readLog( "./csv/windfield_game1_green_withindex_position.csv")
+    data=np.zeros((nbcols, nbrows))
+    for robotp in robot_position:
+        robotp = robotp.split(',')
+        print(robotp[0])
+        px = int(float(robotp[1]) * nbcols)
+        py = int(float(robotp[2]) * nbrows)
+        data[px][py]+=1
+
+    robot_position = readLog( "./csv/windfield_game1_orange_withindex_position.csv")
+    for robotp in robot_position:
+        robotp = robotp.split(',')
+        print(robotp[0])
+        px = int(float(robotp[1]) * nbcols)
+        py = int(float(robotp[2]) * nbrows)
+        data[px][py]+=1
+
+    robot_position = readLog( "./csv/windfield_game1_blue_withindex_position.csv")
+    for robotp in robot_position:
+        robotp = robotp.split(',')
+        print(robotp[0])
+        px = int(float(robotp[1]) * nbcols)
+        py = int(float(robotp[2]) * nbrows)
+        data[px][py]+=1
+    fig, ax = plt.subplots()
+    #heatmap = ax.pcolor(data)
+    red_high = ((0., 0., 0.),
+         (.3, .5, 0.5),
+         (1., 1., 1.))
+
+    blue_middle = ((0., .2, .2),
+         (.3, .5, .5),
+         (.8, .2, .2),
+         (1., .1, .1))
+
+    green_none = ((0,0,0),(1,0,0))
+
+    cdict3 = {'red':  red_high,
+     'green': green_none,
+     'blue': blue_middle,
+     'alpha': ((0.0, 0.0, 0.0),
+               (0.3, 0.5, 0.5),
+               (1.0, 1.0, 1.0))
+    }
+
+    #ax.scatter(x, y, label=str(i), color=color, alpha=0.5)
+    #dropout_high = LinearSegmentedColormap('Dropout', cdict3)
+    #plt.register_cmap(cmap = dropout_high)
+    sns.jointplot(x="x", y="y", data=data, kind="kde");
+    #x,y = data.T
+    #plt.hexbin(x,y, bins='log', cmap=dropout_high)
+    #plt.imshow(img,zorder=0, extent=[0, nbcols, 0, nbrows])
+    #plt.show()
+    #plt.imshow(data)
+    #plt.show()
 
 
 def main():
-    lines  = readLog(infile)
+    #lines  = readLog(infile)
     #print(computeFrameRate(lines))
-    (robot_position, ppoints, robot_velocity, distances) =  extractData(lines)
+    #(robot_position, ppoints, robot_velocity, distances) =  extractData(lines)
     #plotDistances(distances)
     #fname2 = infile[:-4]+'_distances.csv'
     #plt.plotfile(fname2, cols=(0,1,2,3), subplots = False)
     #plt.show()
+
+    #occupationAnalysis()
+
+    print(graspAnalysis('orange'))
+
+    #graspAnalysis(color = 'orange')
 
 def plotDistances(distances):
     times = [d[0] for d in distances]
