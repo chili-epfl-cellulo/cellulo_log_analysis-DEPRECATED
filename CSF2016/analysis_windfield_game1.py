@@ -13,6 +13,7 @@ import matplotlib.cbook as cbook
 import math
 from matplotlib.colors import LinearSegmentedColormap
 import pandas as pd
+from numpy import genfromtxt
 import seaborn as sns
 sns.set(color_codes=True)
 
@@ -116,8 +117,8 @@ def extractData(lines):
     for line in lines:
 
         linelist = line.split(' ')
-        time = datetime.strptime(linelist[0] + ' '+ linelist[1], '%d/%m/%Y %H:%M:%S.%f') - first_time
-        time = time.total_seconds()
+        time = linelist[0] + ' '+ linelist[1]
+        #time = time.total_seconds()
         #print(time)
 
         # position of the robot
@@ -131,8 +132,8 @@ def extractData(lines):
 
             distances.append([time, len(hlist), all_distances ])
             maxlenght = max(maxlenght,len(hlist))
-            fout.write((str(time)+','+str(all_distances).replace(']','').replace('[','')+'\n'))
-            fpos.write((str(time)+','+str(robot_positionx)+','+str(robot_positiony)+'\n'))
+            fout.write((time+','+str(all_distances).replace(']','').replace('[','')+'\n'))
+            fpos.write((time+','+str(robot_positionx)+','+str(robot_positiony)+'\n'))
             #print(distances[-1])
 
         # when a new ppoint list is hidden or re-hidden
@@ -140,7 +141,7 @@ def extractData(lines):
             tmplist =linelist[-1]
             hlist = tmplist[1:-1].split(',')
             hlist = parsePointList(hlist)
-            fpoint.write((str(time)+','+str(hlist).replace(']','').replace('[','')+'\n'))
+            fpoint.write((time+','+str(hlist).replace(']','').replace('[','')+'\n'))
             ppoints.append([time, hlist])
 
         # speed of robot
@@ -148,11 +149,11 @@ def extractData(lines):
             robot_velx = int(float(linelist[-2]))
             robot_vely = int(float(linelist[-1]))
             robot_velocity.append([time, robot_velx, robot_vely])
-            fvel.write((str(time)+','+str(robot_velx)+','+str(robot_vely)+'\n'))
+            fvel.write((time+','+str(robot_velx)+','+str(robot_vely)+'\n'))
 
         # events
         if(line.find('grasped')>=0):
-            fgrasped.write(str(time)+',grasped\n')
+            fgrasped.write(time+',grasped\n')
             events.append([time,'GRASPED'])
         if(line.find('checking')>=0):
             events.append([time,'CHECKING'])
@@ -203,42 +204,65 @@ def drawHiddenPointList(hlist,img):
             #fill(c[0],c[1],c[2],127)
             #ellipse(hxm, hym, 70, 70)
 
+def velocityAnalysis(color='orange'):
+    fname = "./csv/windfield_game1_"+color+"_withindex_velocity.csv"
+    v_data = genfromtxt(fname,delimiter=',',dtype=object,
+                converters={0: lambda x: datetime.strptime(x, '%d/%m/%Y %H:%M:%S.%f'),
+                1: np.float, 2: np.float})
+    df = v_data[:,[1,-1]]
+    sns.jointplot(x="x", y="y", data=df, kind="kde");
+
 def graspAnalysis(color = 'orange'):
-    th_time = 2
+    th_time = timedelta(seconds = 2)
     g_data = readLog( "./csv/windfield_game1_"+color+"_withindex_grasped.csv")
     tot_gtime =0
-    gtime = float(g_data[0].replace('\n','').split(',')[0])
+    first_time = timeOf(g_data[0].split(',')[0])
+    gtime = timeOf(g_data[0].replace('\n','').split(',')[0])
+    fgrasp = open('./csv/grasped_periods.csv','a')
+    fgrasp.write('tablet,time,grasped_time\n')
     for gline in g_data:
         gline = gline.replace('\n','').split(',')
-        if((float(gline[0]) < gtime + th_time) and gline[1]!='over'):
-            gtime = float(gline[0])
+        if((timeOf(gline[0]) < gtime + th_time) and gline[1]!='over'):
+            gtime = timeOf(gline[0])
             continue
         elif(gline[1]=='over'):
-            tot_gtime /= float(gline[0])
+            tot_gtime /= (timeOf(gline[0]) - first_time).total_seconds()
+            fgrasp.close()
             print(tot_gtime*100, gline[0])
             return tot_gtime*100
         else:
-            tot_gtime += float(gline[0]) - gtime
-            gtime = float(gline[0])
+            dt =  timeOf(gline[0])
+            if((dt - gtime).total_seconds()<1000):
+                tot_gtime += (dt - gtime).total_seconds()
+                fgrasp.write(color+','+gline[0]+','+str((dt - gtime).total_seconds())+'\n')
+            gtime = dt
 
+def timeOf(astring):
+    return datetime.strptime(astring,'%d/%m/%Y %H:%M:%S.%f')
 
 def kidnappedRatio(color = 'orange'):
     k_data = readLog( "./csv/windfield_game1_"+color+"_withindex_kidnapped.csv")
-    tot_ktime =0
+    tot_ktime = 0
     ktime = 0
     prev_lineisk = False
+    fkidnapped = open('./csv/kidnapped_periods.csv','a')
+    fkidnapped.write('tablet,time,kidnapped_time\n')
+    first_time = timeOf(k_data[0].split(',')[0])
     for kline in k_data:
         kline = kline.replace('\n','').split(',')
         if(kline[1]=='kidnapped'):
-            ktime = float(kline[0])
+            ktime = timeOf(kline[0])
             prev_lineisk = True
         elif(kline[1]=='returned' and prev_lineisk):
-            tot_ktime += (float(kline[0]) - ktime)
+            dt =  timeOf(kline[0])
+            tot_ktime += (dt - ktime).total_seconds()
+            fkidnapped.write(color+','+kline[0]+','+str((dt - ktime).total_seconds())+'\n')
             prev_lineisk = False
         elif(kline[1]=='over'):
-            tot_ktime /= float(kline[0])
+            tot_ktime /= (timeOf(kline[0]) - first_time).total_seconds()
             prev_lineisk = False
             print(tot_ktime*100, kline[0])
+            fkidnapped.close()
             return tot_ktime*100
 
 
@@ -303,19 +327,19 @@ def occupationAnalysis():
 
 def main():
     #lines  = readLog(infile)
-    #print(computeFrameRate(lines))
     #(robot_position, ppoints, robot_velocity, distances) =  extractData(lines)
-    #plotDistances(distances)
-    #fname2 = infile[:-4]+'_distances.csv'
-    #plt.plotfile(fname2, cols=(0,1,2,3), subplots = False)
-    #plt.show()
+
+    #print(computeFrameRate(lines))
 
     #occupationAnalysis()
 
-    print(graspAnalysis('orange'))
+    #print((kidnappedRatio('orange')+kidnappedRatio('green')+kidnappedRatio('blue'))/3)
+
+    #print((graspAnalysis('orange')+graspAnalysis('green')+graspAnalysis('blue'))/3)
 
     #graspAnalysis(color = 'orange')
 
+    velocityAnalysis(color='orange')
 def plotDistances(distances):
     times = [d[0] for d in distances]
     distancelist = [d[-1] for d in distances]
