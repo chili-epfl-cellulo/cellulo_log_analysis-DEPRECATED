@@ -11,19 +11,23 @@ from itertools import izip_longest
 from scipy.misc import imread
 import matplotlib.cbook as cbook
 import math
+import matplotlib as mplt
 from matplotlib.colors import LinearSegmentedColormap
 import pandas as pd
 from numpy import genfromtxt
 import seaborn as sns
+from scipy.stats import kendalltau
 sns.set(color_codes=True)
 
-infile = "windfield_game1_green_withindex.log"
+infile = "windfield_game1_blue_withindex.log"
 count = 0
 width = 1280
 height = 1280
 global hlist
 hlist = []
 hp =0
+mapwidth = 1700
+mapheight = 660
 nbcols = int(2418 /12)
 nbrows = int(950 /12)
 fps = 0
@@ -94,12 +98,12 @@ def computeDistancePPoints(hlist, robotposition):
     else:
         return [-1]
 
-
-def extractData(lines):
+def extractData(lines,getPosition=True,getVel=True,getPpint=True,getEvents=True):
     plt.figure()
     img =  imread('./playground.jpg')
     hlist=[]
-    robot_position = []
+    phlist =[]
+    robot_position = [(0,0)]
     robot_velocity = []
     ppoints=[]
     events = []
@@ -108,12 +112,15 @@ def extractData(lines):
     fout = open('./csv/'+infile[:-4]+'_distances.csv','w')
     fgrasped = open('./csv/'+infile[:-4]+'_grasped.csv','w')
     fkidnapped = open('./csv/'+infile[:-4]+'_kidnapped.csv','w')
+    fkidnappedDistance = open('./csv/'+infile[:-4]+'_kidnapped_distances.csv','w')
     fvel = open('./csv/'+infile[:-4]+'_velocity.csv','w')
     fpos = open('./csv/'+infile[:-4]+'_position.csv','w')
     fpoint = open('./csv/'+infile[:-4]+'_ppoints.csv','w')
     firstline = lines[0].split(' ')
     first_time = datetime.strptime(firstline[0] + ' '+firstline[1], '%d/%m/%Y %H:%M:%S.%f')
     time = 0
+    dx = 0
+    dy = 0
     for line in lines:
 
         linelist = line.split(' ')
@@ -122,47 +129,60 @@ def extractData(lines):
         #print(time)
 
         # position of the robot
-        if(line.find("robot at") >= 0):
+        if(line.find("robot at") >= 0 and getPosition):
             robot_positionx = float(linelist[-2])
             robot_positiony = float(linelist[-1])
             if(robot_positionx>1 or robot_positiony>1):
                 continue
-            robot_position.append([time, robot_positionx, robot_positiony])
+            robot_position.append(( robot_positionx, robot_positiony))
             all_distances = computeDistancePPoints(hlist,[robot_positionx,robot_positiony])
 
             distances.append([time, len(hlist), all_distances ])
             maxlenght = max(maxlenght,len(hlist))
-            fout.write((time+','+str(all_distances).replace(']','').replace('[','')+'\n'))
+
+            fout.write((time+','+str(len(all_distances))+','+str(all_distances).replace(']','').replace('[','')+'\n'))
             fpos.write((time+','+str(robot_positionx)+','+str(robot_positiony)+'\n'))
             #print(distances[-1])
 
         # when a new ppoint list is hidden or re-hidden
-        if(line.find('hide ppoint list') >= 0):
+        if(line.find('hide ppoint list') >= 0 and getPpint):
             tmplist =linelist[-1]
             hlist = tmplist[1:-1].split(',')
             hlist = parsePointList(hlist)
-            fpoint.write((time+','+str(hlist).replace(']','').replace('[','')+'\n'))
-            ppoints.append([time, hlist])
+            if(hlist!=phlist):
+                phlist=hlist
+                print('new')
+            print(phlist,hlist)
+            #print(set(hlist).difference(set(phlist)))
+            for h in hlist:
+                fpoint.write((time+','+str(h).replace(']','').replace('[','')+'\n'))
+                ppoints.append([time, h])
 
         # speed of robot
-        if(line.find('robot velocity')>=0):
+        if(line.find('robot velocity')>=0 and getVel):
             robot_velx = int(float(linelist[-2]))
             robot_vely = int(float(linelist[-1]))
             robot_velocity.append([time, robot_velx, robot_vely])
             fvel.write((time+','+str(robot_velx)+','+str(robot_vely)+'\n'))
 
         # events
-        if(line.find('grasped')>=0):
+        if(line.find('grasped')>=0 and getEvents):
             fgrasped.write(time+',grasped\n')
             events.append([time,'GRASPED'])
-        if(line.find('checking')>=0):
+        if(line.find('checking')>=0 and getEvents):
             events.append([time,'CHECKING'])
 
         #kidnappes
         if(line.find('returned on paper')>=0):
             fkidnapped.write(str(time)+',returned\n')
+            (dxb, dyb) = robot_position[-1]
+            dx = dxb - dx
+            dy = dyb - dy
+            fkidnappedDistance.write(str(time)+','+str(dx)+','+str(dy)+'\n')
             events.append([time,'RETURNED'])
         elif(line.find('was kidnapped')>=0):
+            (dx,dy) = robot_position[-1]
+
             fkidnapped.write(str(time)+',kidnapped\n')
             events.append([time,'KIDNAPPED'])
 
@@ -171,13 +191,13 @@ def extractData(lines):
     fgrasped.close()
     fkidnapped.write(str(time)+',over\n')
     fkidnapped.close()
+    fkidnappedDistance.close()
     fvel.close()
     fpos.close()
     fpoint.close()
     print(len(robot_position), len(ppoints),len(robot_velocity),len(events))
     print(maxlenght)
     return (robot_position, ppoints, robot_velocity, distances)
-
 
 def parsePointList(hlist):
     hpointlist = []
@@ -188,7 +208,6 @@ def parsePointList(hlist):
         hv = hlist[h+3]
         hpointlist.append([int(hx),int(hy),hw,hv])
     return hpointlist
-
 
 def drawHiddenPointList(hlist,img):
     for h in xrange(0,len(hlist),4):
@@ -206,11 +225,92 @@ def drawHiddenPointList(hlist,img):
 
 def velocityAnalysis(color='orange'):
     fname = "./csv/windfield_game1_"+color+"_withindex_velocity.csv"
-    v_data = genfromtxt(fname,delimiter=',',dtype=object,
+    v_data = genfromtxt(fname,delimiter=',',dtype=object,missing_values=0, skip_header = 1,
                 converters={0: lambda x: datetime.strptime(x, '%d/%m/%Y %H:%M:%S.%f'),
-                1: np.float, 2: np.float})
-    df = v_data[:,[1,-1]]
-    sns.jointplot(x="x", y="y", data=df, kind="kde");
+                1: np.float, 2: np.float},usecols=(1,2))
+
+    v_data = v_data.view(np.float64).reshape(v_data.shape + (-1,))
+
+    x = [row[0] for row in v_data]
+    y = [row[1] for row in v_data]
+
+    sns.set(style="white", color_codes=True)
+    g = sns.jointplot(x=np.array(x)*nbcols, y=np.array(y)*nbrows)
+    plt.show()
+
+def computeVelocityfromPosition(color='orange'):
+    color = ['orange','blue','green']
+    sns.set_style('darkgrid')
+    x = np.empty(1)
+    y = np.empty(1)
+    vx = np.empty(1)
+    vy = np.empty(1)
+    for c in color:
+        fname = "./csv/windfield_game1_"+c+"_withindex_position.csv"
+        v_data = genfromtxt(fname,delimiter=',',dtype=object,missing_values=0, skip_header = 1,
+                converters={0: lambda xl: datetime.strptime(xl, '%d/%m/%Y %H:%M:%S.%f'),
+                1: np.float, 2: np.float},usecols=(1,2))
+        v_data = v_data.view(np.float64).reshape(v_data.shape + (-1,))
+        x = np.append(x, np.array([row[0] for row in v_data]))
+        y = np.append(y,np.array([row[1] for row in v_data]))
+        vx = np.diff(x)
+        vy = np.diff(y)
+
+    #sns.jointplot(np.array(x), np.array(y), kind="hex", stat_func=kendalltau, color="#4CB391")
+    sns.set(style="white", color_codes=True)
+    sns.jointplot(x=np.array(vx)*mapwidth, y=np.array(vy)*mapheight,kind="kde", space=0)
+    #img =  imread('./playground.jpg')
+
+    #plt.imshow(img, zorder = 0, extent=[0.0, mapwidth, 0.0, mapheight])
+    #g.savefig('positionOccupation.svg', format='png',dpi=1200)
+    #plt.show()
+
+def extractNbTrialTillFind(color='orange'):
+    fname = "./csv/windfield_game1_"+color+"_withindex_ppoints.csv"
+    v_data = genfromtxt(fname,delimiter=',',dtype=object,missing_values=0, skip_header = 1,
+                converters={0: lambda x: datetime.strptime(x, '%d/%m/%Y %H:%M:%S.%f'),
+                1: np.int, 2: np.int,3:np.str,4:np.str},usecols=range(0,5))
+    np.array(v_data)
+    hlist = np.empty((250,250),dtype=datetime)
+    ppointlisttime = []
+    for t, x, y, h,v in v_data:
+        if(hlist[x,y]==None and v.find('true')>=0):
+            hlist[x,y]=t
+        elif(hlist[x,y]!=None and v.find('false')>=0):
+            #trouve
+            print(hlist[x,y])
+            ppointlisttime.append((t - hlist[x,y]).total_seconds())
+            hlist[x,y]==0
+    print(ppointlisttime)
+
+def plotDistanceEvol(color='orange'):
+    fname = "./csv/windfield_game1_"+color+"_withindex_ppoints.csv"
+
+def positionAnalysis():
+    color = ['orange','blue','green']
+    sns.set_style('darkgrid')
+    x = np.empty(1)
+    y = np.empty(1)
+    for c in color:
+        fname = "./csv/windfield_game1_"+c+"_withindex_position.csv"
+        v_data = genfromtxt(fname,delimiter=',',dtype=object,missing_values=0, skip_header = 1,
+                converters={0: lambda xl: datetime.strptime(xl, '%d/%m/%Y %H:%M:%S.%f'),
+                1: np.float, 2: np.float},usecols=(1,2))
+        v_data = v_data.view(np.float64).reshape(v_data.shape + (-1,))
+        x = np.append(x, np.array([row[0] for row in v_data]))
+        y = np.append(y,np.array([row[1] for row in v_data]))
+        print(len(x),len(y))
+    #sns.jointplot(np.array(x), np.array(y), kind="hex", stat_func=kendalltau, color="#4CB391")
+    sns.set(style="white", color_codes=True)
+    g = sns.jointplot(x=np.array(x)*mapwidth, y=np.array(y)*mapheight,kind="kde", space=0)
+    img =  imread('./playground.jpg')
+
+    plt.imshow(img, zorder = 0, extent=[0.0, mapwidth, 0.0, mapheight])
+    #g.savefig('positionOccupation.svg', format='png',dpi=1200)
+    plt.show()
+
+
+
 
 def graspAnalysis(color = 'orange'):
     th_time = timedelta(seconds = 2)
@@ -326,8 +426,9 @@ def occupationAnalysis():
 
 
 def main():
-    #lines  = readLog(infile)
-    #(robot_position, ppoints, robot_velocity, distances) =  extractData(lines)
+    #mplt.use('Agg')
+    lines  = readLog(infile)
+    (robot_position, ppoints, robot_velocity, distances) =  extractData(lines)
 
     #print(computeFrameRate(lines))
 
@@ -339,7 +440,18 @@ def main():
 
     #graspAnalysis(color = 'orange')
 
-    velocityAnalysis(color='orange')
+    #velocityAnalysis(color='green')
+
+    #positionAnalysis()
+
+    #computeVelocityfromPosition()
+
+    #extractNbTrialTillFind(color='orange')
+    #import seaborn as sns; sns.set(style="white", color_codes=True)
+    #tips = sns.load_dataset("tips")
+    #g = sns.jointplot(x="total_bill", y="tip", data=tips)
+    #plt.show()
+
 def plotDistances(distances):
     times = [d[0] for d in distances]
     distancelist = [d[-1] for d in distances]
