@@ -1,0 +1,23 @@
+start: 09:22:55
+edith: 30s
+prof:  86s
+captn: 32s
+gina:  20s
+
+start: 11:29:20
+edith: 32s
+prof:  75s
+captn: 46s
+gina:  51s
+
+start: 13:19:21
+edith: 48s
+prof:  24s
+captn: 59s
+gina:  20s
+
+start: 14:14:22
+edith: 45s
+prof:  14s
+captn: 108s
+gina:  57s

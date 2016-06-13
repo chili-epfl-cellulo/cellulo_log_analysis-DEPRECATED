@@ -1,0 +1,4 @@
+activity1 (N=70): 78.91 +- 40.88, min: 13s, max: 199s
+activity2 (N=14): 125.2 +- 51.59, min: 47s, max: 222s
+activity3a(N=14): 13.57 +- 4.327, min: 5s,  max: 21s
+activity3b(N=56): 40.71 +- 21.93, min: 14s, max: 108s
